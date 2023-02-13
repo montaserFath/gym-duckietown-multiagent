@@ -525,19 +525,8 @@ class Simulator(gym.Env):
         ]
         self.ground_vlist = pyglet.graphics.vertex_list(4, ("v3f", verts))
 
-    def reset(self, segment: bool = False):
-        """
-        Reset the simulation at the start of a new episode
-        This also randomizes many environment parameters (domain randomization)
-        """
-
-        # Step count since episode start
-        self.step_count = 0
-        self.timestamp = 0.0
-
-        # Robot's current speed
-        self.speed = 0.0
-
+    def _prepare_env_reset(self, n_agent: int = 1):
+        """Prepare simulator reset"""
         if self.randomize_maps_on_reset:
             map_name = self.np_random.choice(self.map_names)
             logger.info(f"Random map chosen: {map_name}")
@@ -689,65 +678,80 @@ class Simulator(gym.Env):
 
         else:
             # Keep trying to find a valid spawn position on this tile
-            for _ in range(MAX_SPAWN_ATTEMPTS):
-                i, j = tile["coords"]
+            all_propose_pos, all_propose_angle = [], []
+            for agent_id in range(n_agent):
+                for _ in range(MAX_SPAWN_ATTEMPTS):
+                    i, j = tile["coords"]
+                    # Choose a random position on this tile
+                    x = self.np_random.uniform(i, i + 1) * self.road_tile_size
+                    z = self.np_random.uniform(j, j + 1) * self.road_tile_size
+                    propose_pos = np.array([x, 0, z])
 
-                # Choose a random position on this tile
-                x = self.np_random.uniform(i, i + 1) * self.road_tile_size
-                z = self.np_random.uniform(j, j + 1) * self.road_tile_size
-                propose_pos = np.array([x, 0, z])
+                    # Choose a random direction
+                    propose_angle = self.np_random.uniform(0, 2 * math.pi)
+                    # logger.debug('Sampled %s %s angle %s' % (propose_pos[0],
+                    #                                          propose_pos[1],
+                    #                                          np.rad2deg(propose_angle)))
 
-                # Choose a random direction
-                propose_angle = self.np_random.uniform(0, 2 * math.pi)
+                    # If this is too close to an object or not a valid pose, retry
+                    inconvenient = self._inconvenient_spawn(propose_pos)
 
-                # logger.debug('Sampled %s %s angle %s' % (propose_pos[0],
-                #                                          propose_pos[1],
-                #                                          np.rad2deg(propose_angle)))
+                    if inconvenient:
+                        # msg = 'The spawn was inconvenient.'
+                        # logger.warning(msg)
+                        continue
 
-                # If this is too close to an object or not a valid pose, retry
-                inconvenient = self._inconvenient_spawn(propose_pos)
+                    invalid = not self._valid_pose(propose_pos, propose_angle, safety_factor=1.3)
+                    if invalid:
+                        # msg = 'The spawn was invalid.'
+                        # logger.warning(msg)
+                        continue
 
-                if inconvenient:
-                    # msg = 'The spawn was inconvenient.'
-                    # logger.warning(msg)
-                    continue
-
-                invalid = not self._valid_pose(propose_pos, propose_angle, safety_factor=1.3)
-                if invalid:
-                    # msg = 'The spawn was invalid.'
-                    # logger.warning(msg)
-                    continue
-
-                # If the angle is too far away from the driving direction, retry
-                try:
-                    lp = self.get_lane_pos2(propose_pos, propose_angle)
-                except NotInLane:
-                    continue
-                M = self.accept_start_angle_deg
-                ok = -M < lp.angle_deg < +M
-                if not ok:
-                    continue
-                # Found a valid initial pose
-                break
-            else:
-                msg = f"Could not find a valid starting pose after {MAX_SPAWN_ATTEMPTS} attempts"
-                logger.warn(msg)
-                propose_pos = np.array([1, 0, 1])
-                propose_angle = 1
-
-                # raise Exception(msg)
-
-        self.cur_pos = propose_pos
-        self.cur_angle = propose_angle
-
-        init_vel = np.array([0, 0])
-
+                    # If the angle is too far away from the driving direction, retry
+                    try:
+                        lp = self.get_lane_pos2(propose_pos, propose_angle)
+                    except NotInLane:
+                        continue
+                    M = self.accept_start_angle_deg
+                    ok = -M < lp.angle_deg < +M
+                    if not ok:
+                        continue
+                    # Found a valid initial pose
+                    break
+                else:
+                    msg = f"Could not find a valid starting pose after {MAX_SPAWN_ATTEMPTS} attempts"
+                    logger.warn(msg)
+                    propose_pos = np.array([1, 0, 1])
+                    propose_angle = 1
+                    # raise Exception(msg)
+                all_propose_pos.append(propose_pos)
+                all_propose_angle.append(propose_angle)
         # Initialize Dynamics model
         if self.dynamics_rand:
             trim = 0 + self.randomization_settings["trim"][0]
-            p = get_DB18_uncalibrated(delay=0.15, trim=trim)
+            dynamic_model = get_DB18_uncalibrated(delay=0.15, trim=trim)
         else:
-            p = get_DB18_nominal(delay=0.15)
+            dynamic_model = get_DB18_nominal(delay=0.15)
+        if n_agent == 1:
+            return np.array(propose_pos), propose_angle, dynamic_model
+        return np.array(all_propose_pos), np.array(all_propose_angle), dynamic_model
+
+    def reset(self, segment: bool = False):
+        """
+        Reset the simulation at the start of a new episode
+        This also randomizes many environment parameters (domain randomization)
+        """
+
+        # Step count since episode start
+        self.step_count = 0
+        self.timestamp = 0.0
+
+        # Robot's current speed
+        self.speed = 0.0
+
+        self.cur_pos, self.cur_angle, p = self._prepare_env_reset()
+
+        init_vel = np.array([0, 0])
 
         q = self.cartesian_from_weird(self.cur_pos, self.cur_angle)
         v0 = geometry.se2_from_linear_angular(init_vel, 0)
@@ -878,7 +882,7 @@ class Simulator(gym.Env):
             msg = "Cannot load map data"
             raise InvalidMapException(msg, map_data=map_data)
 
-    def _load_objects(self, map_data: MapFormat1):
+    def _load_objects(self, map_data: MapFormat1, n_agents: int = 1):
         # Create the objects array
         self.objects = []
 
@@ -915,6 +919,11 @@ class Simulator(gym.Env):
                     self.interpret_object(obj_name, desc)
             else:
                 raise ValueError(objects)
+
+        # add Multi-bots
+        if n_agents > 1:
+            for agent in range(1, n_agents):
+                self.interpret_object(obj_name, desc)
 
         # If there are collidable objects
         if len(self.collidable_corners) > 0:
