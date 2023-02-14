@@ -9,8 +9,13 @@ from gym import spaces
 from gym_duckietown.simulator import Simulator
 from .exceptions import InvalidMapException, NotInLane
 from . import logger
-from simulator import _update_pos
+from gym_duckietown.simulator import _update_pos
 from duckietown_world import MapFormat1Constants
+
+
+# Camera image size
+DEFAULT_CAMERA_WIDTH = 640
+DEFAULT_CAMERA_HEIGHT = 480
 
 
 class MultiagentSimulator(Simulator):
@@ -18,12 +23,9 @@ class MultiagentSimulator(Simulator):
     Multiagent class
     """
 
-    def __init__(self, n_agents=2, **kwargs):
+    def __init__(self, n_agents: int = 1, camera_width: int = DEFAULT_CAMERA_WIDTH, camera_height: int = DEFAULT_CAMERA_HEIGHT, **kwargs):
         self._n_agents = n_agents
-        Simulator.__init__(self, **kwargs)
-        self.observation_space = spaces.Box(
-            low=0, high=255, shape=(self._n_agents, self.camera_height, self.camera_width, 3), dtype=np.uint8
-        )
+
         self.last_action, self.wheelVels = {}, {}
         self.cur_pos, self.cur_angle = {}, {}
         self.speed, self.timestamp = {}, {}
@@ -36,37 +38,50 @@ class MultiagentSimulator(Simulator):
             self.speed.update({agent_id: 0.0})
             self.timestamp.update({agent_id: 0.0})
 
+        self.camera_width = camera_width
+        self.camera_height = camera_height
+
+        self.observation_space = spaces.Box(
+            low=0, high=255, shape=(self._n_agents, self.camera_height, self.camera_width, 3), dtype=np.uint8
+        )
+        self.action_space = spaces.Box(low=-1, high=1, shape=(self._n_agents, 2), dtype=np.float32)
+        Simulator.__init__(self, **kwargs)
+
     def reset(self, segment: bool = False):
         """Reset function"""
         self.step_count = 0
+        obs = {}
         for agent_id in range(self._n_agents):
             self.speed.update({agent_id: 0.0})
             self.timestamp.update({agent_id: 0.0})
+            obs.update({agent_id: np.zeros(1)})
 
-        self.cur_pos, self.cur_angle, p = self._prepare_env_reset(n_agent=self._n_agents)
+        cur_pos, cur_angle, p = self._prepare_env_reset(n_agent=self._n_agents)
         for agent_id in range(self._n_agents):
+            if self._n_agents == 1:
+                self.cur_pos.update({agent_id: cur_pos})
+                self.cur_angle.update({agent_id: cur_angle})
             q = self.cartesian_from_weird(self.cur_pos[agent_id], self.cur_angle[agent_id])
             v0 = geometry.se2_from_linear_angular(np.array([0, 0]), 0)
             c0 = q, v0
             self.state = p.initialize(c0=c0, t0=0)
 
-        logger.info(f"Starting at {self.cur_pos} {self.cur_angle}")
+            logger.info(f"Starting at {self.cur_pos[agent_id]} {self.cur_angle[agent_id]}")
 
-        # Generate the first camera image
-        obs = self.render_obs(segment=segment)
+            # Generate the first camera image
+            obs.update({agent_id: self.render_obs(segment=segment, n_agent=self._n_agents)})
 
         # Return first observation
         return obs
 
-    def update_physics(self, action: dict, delta_time: float = None):
+    def update_physics(self, action: np.ndarray, delta_time: float = None):
         """update physics for all agents"""
         if delta_time is None:
             delta_time = self.delta_time
         prev_pos = self.cur_pos.copy()
         for agent_id in range(self._n_agents):
             self.wheelVels[agent_id] = action[agent_id] * self.robot_speed * 1
-            self.timestamp += delta_time
-
+            self.timestamp[agent_id] += delta_time
             # Update the robot's position
             self.cur_pos[agent_id], self.cur_angle[agent_id] = _update_pos(self, action[agent_id])
             self.last_action[agent_id] = action[agent_id]
@@ -114,7 +129,7 @@ class MultiagentSimulator(Simulator):
         misc["Simulator"] = info
         return misc
 
-    def step(self, action: dict):
+    def step(self, action: np.ndarray):
         """step function for multi-agent env"""
         for agent_id in range(self._n_agents):
             action[agent_id] = np.clip(action[agent_id], -1, 1)

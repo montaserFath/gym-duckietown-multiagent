@@ -229,6 +229,7 @@ class Simulator(gym.Env):
         color_sky: Sequence[float] = BLUE_SKY,
         style: str = "photos",
         enable_leds: bool = False,
+        n_agents: int = 1,
     ):
         """
 
@@ -252,6 +253,7 @@ class Simulator(gym.Env):
         :param randomize_maps_on_reset: If true, randomizes the map on reset (Slows down training)
         :param style: String that represent which tiles will be loaded. One of ["photos", "synthetic"]
         :param enable_leds: Enables LEDs drawing.
+        :param n_agents: number of agents in the environment
         """
         self.enable_leds = enable_leds
         information = get_graphics_information()
@@ -761,7 +763,7 @@ class Simulator(gym.Env):
         logger.info(f"Starting at {self.cur_pos} {self.cur_angle}")
 
         # Generate the first camera image
-        obs = self.render_obs(segment=segment)
+        obs = self.render_obs(segment=segment, n_agent=1)
 
         # Return first observation
         return obs
@@ -1722,6 +1724,7 @@ class Simulator(gym.Env):
         img_array,
         top_down: bool = True,
         segment: bool = False,
+        n_agent: int = 1,
     ) -> np.ndarray:
         """
         Render an image of the environment into a frame buffer
@@ -1769,47 +1772,52 @@ class Simulator(gym.Env):
         gl.glLoadIdentity()
         gl.gluPerspective(self.cam_fov_y, width / float(height), 0.04, 100.0)
 
-        # Set modelview matrix
-        # Note: we add a bit of noise to the camera position for data augmentation
-        pos = self.cur_pos
-        angle = self.cur_angle
-        # logger.info('Pos: %s angle %s' % (self.cur_pos, self.cur_angle))
-        if self.domain_rand:
-            pos = pos + self.randomization_settings["camera_noise"]
+        for agent_id in range(n_agent):
+            # Set modelview matrix
+            # Note: we add a bit of noise to the camera position for data augmentation
+            if isinstance(self.cur_pos, dict):
+                pos = self.cur_pos[agent_id] if n_agent > 1 else self.cur_pos[0]
+                angle = self.cur_angle[agent_id] if n_agent > 1 else self.cur_angle[0]
+            else:
+                pos = self.cur_pos
+                angle = self.cur_angle
+            # logger.info('Pos: %s angle %s' % (self.cur_pos, self.cur_angle))
+            if self.domain_rand:
+                pos = pos + self.randomization_settings["camera_noise"]
 
-        x, y, z = pos + self.cam_offset
-        dx, dy, dz = get_dir_vec(angle)
-        gl.glMatrixMode(gl.GL_MODELVIEW)
-        gl.glLoadIdentity()
+            x, y, z = pos + self.cam_offset
+            dx, dy, dz = get_dir_vec(angle)
+            gl.glMatrixMode(gl.GL_MODELVIEW)
+            gl.glLoadIdentity()
 
-        if self.draw_bbox:
-            y += 0.8
-            gl.glRotatef(90, 1, 0, 0)
-        elif not top_down:
-            y += self.cam_height
-            gl.glRotatef(self.cam_angle[0], 1, 0, 0)
-            gl.glRotatef(self.cam_angle[1], 0, 1, 0)
-            gl.glRotatef(self.cam_angle[2], 0, 0, 1)
-            gl.glTranslatef(0, 0, CAMERA_FORWARD_DIST)
+            if self.draw_bbox:
+                y += 0.8
+                gl.glRotatef(90, 1, 0, 0)
+            elif not top_down:
+                y += self.cam_height
+                gl.glRotatef(self.cam_angle[0], 1, 0, 0)
+                gl.glRotatef(self.cam_angle[1], 0, 1, 0)
+                gl.glRotatef(self.cam_angle[2], 0, 0, 1)
+                gl.glTranslatef(0, 0, CAMERA_FORWARD_DIST)
 
-        if top_down:
-            a = (self.grid_width * self.road_tile_size) / 2
-            b = (self.grid_height * self.road_tile_size) / 2
-            fov_y_deg = self.cam_fov_y
-            fov_y_rad = np.deg2rad(fov_y_deg)
-            H_to_fit = max(a, b) + 0.1  # borders
+            if top_down:
+                a = (self.grid_width * self.road_tile_size) / 2
+                b = (self.grid_height * self.road_tile_size) / 2
+                fov_y_deg = self.cam_fov_y
+                fov_y_rad = np.deg2rad(fov_y_deg)
+                H_to_fit = max(a, b) + 0.1  # borders
 
-            H_FROM_FLOOR = H_to_fit / (np.tan(fov_y_rad / 2))
+                H_FROM_FLOOR = H_to_fit / (np.tan(fov_y_rad / 2))
 
-            look_from = a, H_FROM_FLOOR, b
-            look_at = a, 0.0, b - 0.01
-            up_vector = 0.0, 1.0, 0
-            gl.gluLookAt(*look_from, *look_at, *up_vector)
-        else:
-            look_from = x, y, z
-            look_at = x + dx, y + dy, z + dz
-            up_vector = 0.0, 1.0, 0.0
-            gl.gluLookAt(*look_from, *look_at, *up_vector)
+                look_from = a, H_FROM_FLOOR, b
+                look_at = a, 0.0, b - 0.01
+                up_vector = 0.0, 1.0, 0
+                gl.gluLookAt(*look_from, *look_at, *up_vector)
+            else:
+                look_from = x, y, z
+                look_at = x + dx, y + dy, z + dz
+                up_vector = 0.0, 1.0, 0.0
+                gl.gluLookAt(*look_from, *look_at, *up_vector)
 
         # Draw the ground quad
         gl.glDisable(gl.GL_TEXTURE_2D)
@@ -1959,7 +1967,7 @@ class Simulator(gym.Env):
 
         return img_array
 
-    def render_obs(self, segment: bool = False) -> np.ndarray:
+    def render_obs(self, segment: bool = False, n_agent: int = 1) -> np.ndarray:
         """
         Render an observation from the point of view of the agent
         """
@@ -1972,6 +1980,7 @@ class Simulator(gym.Env):
             self.img_array,
             top_down=False,
             segment=segment,
+            n_agent=n_agent,
         )
 
         # self.undistort - for UndistortWrapper
@@ -1980,7 +1989,7 @@ class Simulator(gym.Env):
 
         return observation
 
-    def render(self, mode: str = "human", close: bool = False, segment: bool = False):
+    def render(self, mode: str = "human", close: bool = False, segment: bool = False, n_agent: int = 1):
         """
         Render the environment for human viewing
 
@@ -2045,16 +2054,23 @@ class Simulator(gym.Env):
             pitch=width * 3,
         )
         img_data.blit(0, 0, 0, width=WINDOW_WIDTH, height=WINDOW_HEIGHT)
-
-        # Display position/state information
-        if mode != "free_cam":
-            x, y, z = self.cur_pos
-            self.text_label.text = (
-                f"pos: ({x:.2f}, {y:.2f}, {z:.2f}), angle: "
-                f"{np.rad2deg(self.cur_angle):.1f} deg, steps: {self.step_count}, "
-                f"speed: {self.speed:.2f} m/s"
-            )
-            self.text_label.draw()
+        for agent_id in range(n_agent):
+            if isinstance(self.cur_pos, dict):
+                x, y, z = self.cur_pos[agent_id] if n_agent > 1 else self.cur_pos[0]
+                angle = self.cur_angle[agent_id] if n_agent > 1 else self.cur_angle[0]
+                speed = self.speed[agent_id] if n_agent > 1 else self.speed[0]
+            else:
+                x, y, z = self.cur_pos
+                angle = self.cur_angle
+                speed = self.speed
+            # Display position/state information
+            if mode != "free_cam":
+                self.text_label.text = (
+                    f"pos: ({x:.2f}, {y:.2f}, {z:.2f}), angle: "
+                    f"{np.rad2deg(angle):.1f} deg, steps: {self.step_count}, "
+                    f"speed: {speed:.2f} m/s"
+                )
+                self.text_label.draw()
 
         # Force execution of queued commands
         gl.glFlush()
