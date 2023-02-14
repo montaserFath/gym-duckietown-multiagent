@@ -25,6 +25,10 @@ Multi-agent version of [Duckietown](http://duckietown.org/) self-driving car sim
 
 4- Add reward functions for multi-agent env.
 
+5- Documentation.
+
+6- Linting and pass code tests.
+
 ---
 ### TODO
 1- Test multi-agent to a single-agent wrapper with fix and random policy.
