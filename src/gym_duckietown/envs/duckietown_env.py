@@ -1,7 +1,7 @@
 # coding=utf-8
 import numpy as np
 from gym import spaces
-
+# from ..multiagent_simulator import MultiagentSimulator as Simulator
 from ..simulator import Simulator
 from .. import logger
 
@@ -12,11 +12,11 @@ class DuckietownEnv(Simulator):
     instead of differential drive motor velocities
     """
 
-    def __init__(self, gain=1.0, trim=0.0, radius=0.0318, k=27.0, limit=1.0, **kwargs):
-        Simulator.__init__(self, **kwargs)
+    def __init__(self, gain=1.0, trim=0.0, radius=0.0318, k=27.0, limit=1.0, n_agents: int = 1, **kwargs):
+        Simulator.__init__(self, n_agents=n_agents, **kwargs)
         logger.info("using DuckietownEnv")
-
-        self.action_space = spaces.Box(low=np.array([-1, -1]), high=np.array([1, 1]), dtype=np.float32)
+        self.action_space = spaces.Box(low=-1, high=1, shape=(n_agents, 2), dtype=np.float32)
+        # self.action_space = spaces.Box(low=np.array([-1, -1]), high=np.array([1, 1]), dtype=np.float32)
 
         # Should be adjusted so that the effective speed of the robot is 0.2 m/s
         self.gain = gain

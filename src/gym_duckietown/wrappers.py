@@ -1,4 +1,6 @@
 # coding=utf-8
+from abc import ABC
+
 import cv2
 import gym
 import numpy as np
@@ -225,3 +227,25 @@ class UndistortWrapper(gym.ObservationWrapper):
             )
 
         return cv2.remap(observation, self.mapx, self.mapy, cv2.INTER_NEAREST)
+
+
+class RLSimpleObservation(gym.ObservationWrapper):
+    """
+    Given an image from the camera, it detects lines, and convert it to the camera coordinates then robot's coordinates
+    Observations:
+    0: (float) distance to the left line edge
+    1: (float) distance to the right line edge
+    2: (float) distance to central line
+    3-5: (list) bot current position in (x, y, z)
+    6: (float) bot current linear velocity
+    7: (binary) is the bot in the right or left line (in two ways)
+    8: (binary) is the bot inside the road course or not
+
+    """
+    def __init__(self, env=None):
+        gym.ObservationWrapper.__init__(self, env)
+        self.observation_space = spaces.Box(low=0, high=255, shape=(9,),  dtype=np.float32)
+
+    def get_observation(self):
+        """get observation"""
+        raise NotImplementedError
