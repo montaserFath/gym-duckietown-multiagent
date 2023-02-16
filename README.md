@@ -7,7 +7,7 @@ Multi-agent version of [Duckietown](http://duckietown.org/) self-driving car sim
 
 2- Multi-agent simulator: multi-agent gym env inherited from a single-agent simulator, change observation-space to include all agents, as well as action space.
 
-3- Multi-agent simulator: reset multi-agent env, step all agents, `update_physics()` to move all agents, and `step()` to step multi-agent simulator.
+3- Multi-agent simulator: `reset` multi-agent env, `step` all agents, `update_physics()` to move all agents, and `step()` to step multi-agent simulator.
 
 4- Refactor single-agent simulator to fit multiple agents.
 
@@ -28,6 +28,8 @@ Multi-agent version of [Duckietown](http://duckietown.org/) self-driving car sim
 5- Documentation.
 
 6- Linting and pass code tests.
+
+7- collision between agents --> termnation (`done`).
 
 ---
 ### TODO
