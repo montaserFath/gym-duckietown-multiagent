@@ -13,22 +13,30 @@ class DiscreteWrapper(gym.ActionWrapper):
     instead of continuous control
     """
 
-    def __init__(self, env):
+    def __init__(self, env, stop_action=False):
         gym.ActionWrapper.__init__(self, env)
-        self.action_space = spaces.Discrete(3)
+        self.stop_action = stop_action
+        self.action_space = spaces.Discrete(4 if self.stop_action else 3)
 
     def action(self, action):
+        wheel_distance = 0.102
+        min_rad = 0.08
+
         # Turn left
         if action == 0:
-            vels = [0.6, +1.0]
+            vels = [0.6, 1.0]
         # Turn right
         elif action == 1:
             vels = [0.6, -1.0]
         # Go forward
         elif action == 2:
-            vels = [0.7, 0.0]
+            vels = [0.5, 0.0]
+        # stop
+        elif action == 3:
+            vels = [0.0, 0.0]
         else:
             assert False, "unknown action"
+
         return np.array(vels)
 
     def reverse_action(self, action):
@@ -110,38 +118,97 @@ class PyTorchObsWrapper(gym.ObservationWrapper):
         return observation.transpose(2, 1, 0)
 
 
+# class ResizeWrapper(gym.ObservationWrapper):
+#     def __init__(self, env=None, resize_w=80, resize_h=80):
+#         gym.ObservationWrapper.__init__(self, env)
+#         self.resize_h = resize_h
+#         self.resize_w = resize_w
+#         obs_shape = self.observation_space.shape
+#         self.observation_space = spaces.Box(
+#             self.observation_space.low[0, 0, 0],
+#             self.observation_space.high[1, 1, 1],
+#             [obs_shape[0], resize_h, resize_w],
+#             dtype=self.observation_space.dtype,
+#         )
+#
+#     def observation(self, observation):
+#         return observation
+#
+#     def reset(self):
+#         obs = gym.ObservationWrapper.reset(self)
+#         return cv2.resize(
+#             obs.swapaxes(0, 2), dsize=(self.resize_w, self.resize_h), interpolation=cv2.INTER_CUBIC
+#         ).swapaxes(0, 2)
+#
+#     def step(self, actions):
+#         obs, reward, done, info = gym.ObservationWrapper.step(self, actions)
+#         return (
+#             cv2.resize(
+#                 obs.swapaxes(0, 2), dsize=(self.resize_w, self.resize_h), interpolation=cv2.INTER_CUBIC
+#             ).swapaxes(0, 2),
+#             reward,
+#             done,
+#             info,
+#         )
+
 class ResizeWrapper(gym.ObservationWrapper):
-    def __init__(self, env=None, resize_w=80, resize_h=80):
-        gym.ObservationWrapper.__init__(self, env)
-        self.resize_h = resize_h
-        self.resize_w = resize_w
+    def __init__(self, env=None, shape=(120, 160, 3), crop_top=False):
+        super(ResizeWrapper, self).__init__(env)
+        # self.observation_space.shape = shape
+        self.observation_space = spaces.Box(
+            self.observation_space.low[0, 0, 0],
+            self.observation_space.high[0, 0, 0],
+            shape,
+            # (360, 640, 3),
+            dtype=self.observation_space.dtype,
+        )
+        self.shape = shape
+        self.crop_top = crop_top
+
+    def observation(self, observation):
+        # return observation[120:] if self.crop_top else observation
+        return cv2.resize(observation[120:] if self.crop_top else observation, dsize=(160, 120), interpolation=cv2.INTER_CUBIC)
+
+
+class NormalizeWrapper(gym.ObservationWrapper):
+    def __init__(self, env=None):
+        super(NormalizeWrapper, self).__init__(env)
+        self.obs_lo = self.observation_space.low[0, 0, 0]
+        self.obs_hi = self.observation_space.high[0, 0, 0]
+        obs_shape = self.observation_space.shape
+        self.observation_space = spaces.Box(0.0, 1.0, obs_shape, dtype=np.float32)
+
+    def observation(self, obs):
+        if self.obs_lo == 0.0 and self.obs_hi == 1.0:
+            return obs
+        else:
+            return (obs - self.obs_lo) / (self.obs_hi - self.obs_lo)
+
+
+class ImgWrapper(gym.ObservationWrapper):
+    def __init__(self, env=None):
+        super(ImgWrapper, self).__init__(env)
         obs_shape = self.observation_space.shape
         self.observation_space = spaces.Box(
             self.observation_space.low[0, 0, 0],
-            self.observation_space.high[1, 1, 1],
-            [obs_shape[0], resize_h, resize_w],
+            self.observation_space.high[0, 0, 0],
+            # [obs_shape[2], obs_shape[0], obs_shape[1]],
+            [obs_shape[0], obs_shape[1], obs_shape[2]],
             dtype=self.observation_space.dtype,
         )
 
     def observation(self, observation):
         return observation
+        # return observation.transpose(2, 0, 1)
 
-    def reset(self):
-        obs = gym.ObservationWrapper.reset(self)
-        return cv2.resize(
-            obs.swapaxes(0, 2), dsize=(self.resize_w, self.resize_h), interpolation=cv2.INTER_CUBIC
-        ).swapaxes(0, 2)
 
-    def step(self, actions):
-        obs, reward, done, info = gym.ObservationWrapper.step(self, actions)
-        return (
-            cv2.resize(
-                obs.swapaxes(0, 2), dsize=(self.resize_w, self.resize_h), interpolation=cv2.INTER_CUBIC
-            ).swapaxes(0, 2),
-            reward,
-            done,
-            info,
-        )
+class RewardCropWrapper(gym.RewardWrapper):
+    def __int__(self, env):
+        super(RewardCropWrapper, self).__int__(env)
+        self.reward_range(-1, 1)
+
+    def reward(self, reward):
+        return reward / 1000
 
 
 class UndistortWrapper(gym.ObservationWrapper):
