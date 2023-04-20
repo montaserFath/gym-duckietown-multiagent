@@ -642,7 +642,7 @@ class Simulator(gym.Env):
 
             # Randomize whether the object is visible or not
             if obj.optional and self.domain_rand:
-                obj.visible = self.np_random.integers(0, 2) == 0
+                obj.visible = self.np_random.random_integers(0, 2) == 0
             else:
                 obj.visible = True
 
@@ -663,7 +663,7 @@ class Simulator(gym.Env):
                 if not self.drivable_tiles:
                     msg = "There are no drivable tiles. Use start_tile or self.user_tile_start"
                     raise Exception(msg)
-                tile_idx = self.np_random.integers(0, len(self.drivable_tiles))
+                tile_idx = self.np_random.random_integers(0, len(self.drivable_tiles) - 1)
                 tile = self.drivable_tiles[tile_idx]
 
         # If the map specifies a starting pose
@@ -764,7 +764,7 @@ class Simulator(gym.Env):
 
         # Generate the first camera image
         obs = self.render_obs(segment=segment, n_agent=1)
-
+        # np.save("notebooks/imgs/{}.npy".format(int(self.step_count)), obs)
         # Return first observation
         return obs
 
@@ -1690,7 +1690,7 @@ class Simulator(gym.Env):
 
         d = self._compute_done_reward()
         misc["Simulator"]["msg"] = d.done_why
-
+        # np.save("notebooks/imgs/{}.npy".format(int(self.step_count)), obs)
         return obs, d.reward, d.done, misc
 
     def _compute_done_reward(self) -> DoneRewardInfo:

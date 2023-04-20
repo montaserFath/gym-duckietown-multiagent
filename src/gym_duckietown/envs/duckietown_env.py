@@ -34,7 +34,7 @@ class DuckietownEnv(Simulator):
         self.limit = limit
 
     def step(self, action):
-        vel, angle = action
+        vel, angle = np.squeeze(action)
 
         # Distance between the wheels
         baseline = self.unwrapped.wheel_dist
