@@ -11,27 +11,29 @@ from stable_baselines3 import DQN, A2C, PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.callbacks import EvalCallback
 from gym_duckietown.envs import DuckietownEnv
+from gym_duckietown.simulator import Simulator
 # from gym_duckietown.wrappers import DiscreteWrapper, ResizeWrapper, NormalizeWrapper, ImgWrapper, RewardCropWrapper
-from learning.utils.wrappers import ResizeWrapper, NormalizeWrapper, ImgWrapper, DtRewardWrapper, RewardCropWrapper
+from learning.utils.wrappers import ResizeWrapper, NormalizeWrapper, ImgWrapper, DtRewardWrapper, RewardCropWrapper, DiscreteWrapper
 
 
 def main(evaluation: bool = False, training_steps: int = int(1e5), render: bool = False, alg: str = "ppo"):
     """main function"""
-    env = DuckietownEnv(
+    env = Simulator(
         frame_rate=15,
         frame_skip=2,
         map_name="4way",
         distortion=False,
         camera_rand=False,
         dynamics_rand=False,
+        add_actions_noise=False,
     )
 
     env = ResizeWrapper(env, crop_top=True)
     env = NormalizeWrapper(env)
     env = ImgWrapper(env)  # to make the images from 160x120x3 into 3x160x120
     # env = DiscreteWrapper(env)
-    # env = DtRewardWrapper(env)
-    env = RewardCropWrapper(env)
+    env = DtRewardWrapper(env)
+    # env = RewardCropWrapper(env)
     # env = DummyVecEnv([lambda: env])
     env.reset()
     if evaluation:
@@ -45,7 +47,7 @@ def main(evaluation: bool = False, training_steps: int = int(1e5), render: bool 
             agent = DQN.load("models/resized_img_clip_reward_continuous_action/models/best_model.zip")
         evaluate(env, agent, render=render)
     else:
-        train(env, "resized_img_clip_reward_continuous_action", training_steps, alg=alg)
+        train(env, "fixed_continuous_actions", training_steps, alg=alg)
 
 
 def train(env, model_dir: str, training_steps: int = int(1e5), alg: str = "ppo"):
@@ -97,10 +99,10 @@ def evaluate(env, model, eval_ep: int = 10, render: bool = False):
         time_step = 0
         while not done:
             # np.save("models/debugging/state_ep_{}_t_{}".format(ep, time_step), state)
-            # action = np.array([env.action_space.sample()])
-            action, _ = model.predict(state)
+            action = np.array([env.action_space.sample()])
+            # action, _ = model.predict(state)
             if render:
-                pyglet.clock.schedule_interval(env_step(env, action, render), 1.0 / 5)
+                pyglet.clock.schedule_interval(env_step(env, action, render), 1.0 / 15)
             state, reward, done = env_step(env, action)
             time_step += 1
         print("Reset")
@@ -115,6 +117,6 @@ def env_step(env, action, render=False):
 
 
 if __name__ == "__main__":
-    main(evaluation=True, training_steps=int(1e7), render=True, alg="ppo")
+    main(evaluation=False, training_steps=int(1e7), render=False, alg="ppo")
     # Enter main event loop
     # pyglet.app.run()

@@ -212,7 +212,7 @@ class Simulator(gym.Env):
         draw_bbox: bool = False,
         domain_rand: bool = True,
         frame_rate: float = DEFAULT_FRAMERATE,
-        frame_skip: bool = DEFAULT_FRAME_SKIP,
+        frame_skip: int = DEFAULT_FRAME_SKIP,
         camera_width: int = DEFAULT_CAMERA_WIDTH,
         camera_height: int = DEFAULT_CAMERA_HEIGHT,
         robot_speed: float = DEFAULT_ROBOT_SPEED,
@@ -230,6 +230,7 @@ class Simulator(gym.Env):
         style: str = "photos",
         enable_leds: bool = False,
         n_agents: int = 1,
+        add_actions_noise: bool = False,
     ):
         """
 
@@ -308,7 +309,9 @@ class Simulator(gym.Env):
         self.graphics = True
 
         # Two-tuple of wheel torques, each in the range [-1, 1]
-        self.action_space = spaces.Box(low=-1, high=1, shape=(2,), dtype=np.float32)
+        self.action_space = spaces.Box(low=np.array([0, -1]), high=np.array([1, 1]), dtype=np.float32)
+        self.add_actions_noise = add_actions_noise
+        # self.action_space = spaces.Box(low=-1, high=1, shape=(2,), dtype=np.float32)
 
         self.camera_width = camera_width
         self.camera_height = camera_height
@@ -1678,9 +1681,11 @@ class Simulator(gym.Env):
         return reward
 
     def step(self, action: np.ndarray):
-        action = np.clip(action, -1, 1)
+        action = np.squeeze(action) + np.random.normal(0, 0.1, size=(2,)) if self.add_actions_noise else np.squeeze(action)
+        action[0] = np.clip(action[0], 0, 1)
+        action[1] = np.clip(action[1], -1, 1)
         # Actions could be a Python list
-        action = np.array(action)
+        # action = np.array(action)
         for _ in range(self.frame_skip):
             self.update_physics(action)
 

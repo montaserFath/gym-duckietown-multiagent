@@ -78,14 +78,14 @@ class ImgWrapper(gym.ObservationWrapper):
         self.observation_space = spaces.Box(
             self.observation_space.low[0, 0, 0],
             self.observation_space.high[0, 0, 0],
-            # [obs_shape[2], obs_shape[0], obs_shape[1]],
-            [obs_shape[0], obs_shape[1], obs_shape[2]],
+            [obs_shape[2], obs_shape[0], obs_shape[1]],
+            # [obs_shape[0], obs_shape[1], obs_shape[2]],
             dtype=self.observation_space.dtype,
         )
 
     def observation(self, observation):
-        return observation
-        # return observation.transpose(2, 0, 1)
+        # return observation
+        return observation.transpose(2, 0, 1)
 
 
 class DtRewardWrapper(gym.RewardWrapper):
@@ -121,3 +121,36 @@ class RewardCropWrapper(gym.RewardWrapper):
 
     def reward(self, reward):
         return reward / 1000
+
+
+class DiscreteWrapper(gym.ActionWrapper):
+    """
+    Duckietown environment with discrete actions (left, right, forward)
+    instead of continuous control
+    """
+
+    def __init__(self, env, stop_action=False):
+        gym.ActionWrapper.__init__(self, env)
+        self.stop_action = stop_action
+        self.action_space = spaces.Discrete(4 if self.stop_action else 3)
+
+    def action(self, action):
+        #  Turn left
+        if action == 0:
+            vels = [0.6, 1.0]
+        # Turn right
+        elif action == 1:
+            vels = [0.6, -1.0]
+        # Go forward
+        elif action == 2:
+            vels = [0.5, 0.0]
+        # stop
+        elif action == 3:
+            vels = [0.0, 0.0]
+        else:
+            assert False, "unknown action"
+
+        return np.array(vels)
+
+    def reverse_action(self, action):
+        raise NotImplementedError()
