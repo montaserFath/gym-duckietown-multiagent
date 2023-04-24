@@ -8,15 +8,15 @@ from pyglet.window import key
 import os
 import numpy as np
 from stable_baselines3 import DQN, A2C, PPO
-from stable_baselines3.common.vec_env import DummyVecEnv
+# from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.callbacks import EvalCallback
-from gym_duckietown.envs import DuckietownEnv
+# from gym_duckietown.envs import DuckietownEnv
 from gym_duckietown.simulator import Simulator
 # from gym_duckietown.wrappers import DiscreteWrapper, ResizeWrapper, NormalizeWrapper, ImgWrapper, RewardCropWrapper
-from learning.utils.wrappers import ResizeWrapper, NormalizeWrapper, ImgWrapper, DtRewardWrapper, RewardCropWrapper, DiscreteWrapper
+from learning.utils.wrappers import ResizeWrapper, NormalizeWrapper, ImgWrapper, DtRewardWrapper, RewardCropWrapper, DiscreteWrapper, CustomCNN
 
 
-def main(evaluation: bool = False, training_steps: int = int(1e5), render: bool = False, alg: str = "ppo"):
+def main(evaluation: bool = False, training_steps: int = int(1e5), render: bool = False, alg: str = "ppo", cnn: bool = False):
     """main function"""
     env = Simulator(
         frame_rate=15,
@@ -47,19 +47,26 @@ def main(evaluation: bool = False, training_steps: int = int(1e5), render: bool 
             agent = DQN.load("models/resized_img_clip_reward_continuous_action/models/best_model.zip")
         evaluate(env, agent, render=render)
     else:
-        train(env, "fixed_continuous_actions", training_steps, alg=alg)
+        train(env, "cnn_fixed_continuous_actions", training_steps, alg=alg, cnn=cnn)
 
 
-def train(env, model_dir: str, training_steps: int = int(1e5), alg: str = "ppo"):
+def train(env, model_dir: str, training_steps: int = int(1e5), alg: str = "ppo", cnn: bool = False):
     os.makedirs("models/" + model_dir + "/tensorboard/", exist_ok=True)
     os.makedirs("models/" + model_dir + "/models/", exist_ok=True)
     os.makedirs("models/" + model_dir + "/logs/", exist_ok=True)
+    if cnn:
+        policy_kwargs = dict(
+            features_extractor_class=CustomCNN,
+            features_extractor_kwargs=dict(features_dim=64),
+        )
+    else:
+        policy_kwargs = dict(net_arch=[128, 128, 128])
     if alg == "a2c":
         model = A2C("MlpPolicy",
                     env,
                     verbose=1,
                     learning_rate=1e-3,
-                    policy_kwargs=dict(net_arch=[128, 128, 128]),
+                    policy_kwargs=policy_kwargs,
                     tensorboard_log="models/" + model_dir + "/tensorboard/",
                     )
     elif alg == "ppo":
@@ -67,7 +74,7 @@ def train(env, model_dir: str, training_steps: int = int(1e5), alg: str = "ppo")
                     env,
                     verbose=1,
                     learning_rate=1e-3,
-                    policy_kwargs=dict(net_arch=[128, 128, 128]),
+                    policy_kwargs=policy_kwargs,
                     tensorboard_log="models/" + model_dir + "/tensorboard/",
                     )
     else:
@@ -77,7 +84,7 @@ def train(env, model_dir: str, training_steps: int = int(1e5), alg: str = "ppo")
                     buffer_size=1000,
                     learning_rate=1e-3,
                     batch_size=128,
-                    policy_kwargs=dict(net_arch=[128, 128, 128]),
+                    policy_kwargs=policy_kwargs,
                     tensorboard_log="models/" + model_dir + "/tensorboard/",
                     learning_starts=5000,
                     )
@@ -117,6 +124,6 @@ def env_step(env, action, render=False):
 
 
 if __name__ == "__main__":
-    main(evaluation=False, training_steps=int(1e7), render=False, alg="ppo")
+    main(evaluation=False, training_steps=int(1e7), render=False, alg="ppo", cnn=True)
     # Enter main event loop
     # pyglet.app.run()
