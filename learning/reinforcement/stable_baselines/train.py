@@ -7,7 +7,7 @@ from pyglet.window import key
 
 import os
 import numpy as np
-from stable_baselines3 import DQN, A2C, PPO
+from stable_baselines3 import DQN, A2C, PPO, DDPG
 # from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.callbacks import EvalCallback
 # from gym_duckietown.envs import DuckietownEnv
@@ -42,12 +42,14 @@ def main(evaluation: bool = False, training_steps: int = int(1e5), render: bool 
         if alg == "a2c":
             agent = A2C.load("models/resized_img_clip_reward_continuous_action/models/best_model.zip")
         elif alg =="ppo":
-            agent = PPO.load("models/resized_img_clip_reward_continuous_action/models/ppo/best_model.zip")
+            agent = PPO.load("models/cnn_fixed_continuous_actions/models/best_model.zip")
+        elif alg == "ddpg":
+            agent = DDPG.load("models/cnn_fixed_continuous_actions_trim_reward_ddpg/models/best_model.zip")
         else:
             agent = DQN.load("models/resized_img_clip_reward_continuous_action/models/best_model.zip")
         evaluate(env, agent, render=render)
     else:
-        train(env, "cnn_fixed_continuous_actions", training_steps, alg=alg, cnn=cnn)
+        train(env, "cnn_fixed_continuous_actions_trim_reward_ddpg", training_steps, alg=alg, cnn=cnn)
 
 
 def train(env, model_dir: str, training_steps: int = int(1e5), alg: str = "ppo", cnn: bool = False):
@@ -62,15 +64,24 @@ def train(env, model_dir: str, training_steps: int = int(1e5), alg: str = "ppo",
     else:
         policy_kwargs = dict(net_arch=[128, 128, 128])
     if alg == "a2c":
-        model = A2C("MlpPolicy",
+        model = A2C("CnnPolicy" if cnn else "MlpPolicy",
                     env,
                     verbose=1,
                     learning_rate=1e-3,
                     policy_kwargs=policy_kwargs,
                     tensorboard_log="models/" + model_dir + "/tensorboard/",
                     )
+    elif alg == "ddpg":
+        model = DDPG("CnnPolicy" if cnn else "MlpPolicy",
+                     env,
+                     verbose=1,
+                     buffer_size=2000,
+                     learning_rate=1e-3,
+                     policy_kwargs=policy_kwargs,
+                     tensorboard_log="models/" + model_dir + "/tensorboard/",
+                     )
     elif alg == "ppo":
-        model = PPO("MlpPolicy",
+        model = PPO("CnnPolicy" if cnn else "MlpPolicy",
                     env,
                     verbose=1,
                     learning_rate=1e-3,
@@ -78,7 +89,7 @@ def train(env, model_dir: str, training_steps: int = int(1e5), alg: str = "ppo",
                     tensorboard_log="models/" + model_dir + "/tensorboard/",
                     )
     else:
-        model = DQN("MlpPolicy",
+        model = DQN("CnnPolicy" if cnn else "MlpPolicy",
                     env,
                     verbose=1,
                     buffer_size=1000,
@@ -106,10 +117,10 @@ def evaluate(env, model, eval_ep: int = 10, render: bool = False):
         time_step = 0
         while not done:
             # np.save("models/debugging/state_ep_{}_t_{}".format(ep, time_step), state)
-            action = np.array([env.action_space.sample()])
-            # action, _ = model.predict(state)
+            # action = np.array([env.action_space.sample()])
+            action, _ = model.predict(state)
             if render:
-                pyglet.clock.schedule_interval(env_step(env, action, render), 1.0 / 15)
+                pyglet.clock.schedule_interval(env_step(env, action, render), 1.0 / 1)
             state, reward, done = env_step(env, action)
             time_step += 1
         print("Reset")
@@ -124,6 +135,6 @@ def env_step(env, action, render=False):
 
 
 if __name__ == "__main__":
-    main(evaluation=False, training_steps=int(1e7), render=False, alg="ppo", cnn=True)
+    main(evaluation=True, training_steps=int(1e7), render=True, alg="ddpg", cnn=True)
     # Enter main event loop
     # pyglet.app.run()
