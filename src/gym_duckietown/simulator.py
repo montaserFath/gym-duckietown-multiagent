@@ -309,7 +309,7 @@ class Simulator(gym.Env):
         self.graphics = True
 
         # Two-tuple of wheel torques, each in the range [-1, 1]
-        self.action_space = spaces.Box(low=np.array([0, -1]), high=np.array([1, 1]), dtype=np.float32)
+        self.action_space = spaces.Box(low=np.array([0, -4]), high=np.array([1, 4]), dtype=np.float32)
         self.add_actions_noise = add_actions_noise
         # self.action_space = spaces.Box(low=-1, high=1, shape=(2,), dtype=np.float32)
 
@@ -1682,8 +1682,8 @@ class Simulator(gym.Env):
 
     def step(self, action: np.ndarray):
         action = np.squeeze(action) + np.random.normal(0, 0.1, size=(2,)) if self.add_actions_noise else np.squeeze(action)
-        action[0] = np.clip(action[0], 0, 1)
-        action[1] = np.clip(action[1], -1, 1)
+        action[0] = np.clip(action[0], 0, 1)  # Velocity
+        action[1] = np.clip(action[1], -4, 4)  # Omega
         # Actions could be a Python list
         # action = np.array(action)
         for _ in range(self.frame_skip):
